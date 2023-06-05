@@ -20,4 +20,4 @@ class Setup(commands.Cog, name="Setup"):
             settings = Settings()
         else:
             settings = self.player_settings.get(interaction.user.id)
-        await interaction.response.send_message(view=MainScreen(settings))
+        await interaction.response.send_message(view=MainScreen(settings), ephemeral=True)

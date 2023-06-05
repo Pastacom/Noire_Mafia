@@ -44,6 +44,6 @@ class MainScreen(discord.ui.View):
         elif interaction.data.get("values")[0] == "Reveal Roles":
             await interaction.response.edit_message(view=Reveal.RevealScreen(self.settings))
         elif interaction.data.get("values")[0] == "Save":
-            await interaction.response.send_message("Changes applied.")
+            await interaction.response.edit_message(content="Changes applied.", view=None)
         elif interaction.data.get("values")[0] == "Discard":
-            await interaction.response.send_message("Changes discarded.")
+            await interaction.response.edit_message(content="Changes discarded.", view=None)
