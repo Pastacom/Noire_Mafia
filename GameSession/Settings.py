@@ -1,18 +1,7 @@
-import string
-import random
-from enum import Enum
-
-import discord
-from discord.ext import commands
-from discord import app_commands
-import asyncio
-
-from GameSession.SettingMenu import MainScreen
-
-
 class Settings:
     game_mode_auto = True
     mutes = True
+    hide = True
     time_limits = {"day speech": 60, "justification speech": 45, "vote": 15,
                    "condemned speech": 60, "single role": 40, "team role": 90}
 
