@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from GameSession.Settings import Settings
-from GameSession.SettingsMenu.Main import MainScreen
+from GameSettings.Settings import Settings
+from GameSettings.SettingsMenu.Main import MainScreen
 from Utils.CogStatus import Status
 
 

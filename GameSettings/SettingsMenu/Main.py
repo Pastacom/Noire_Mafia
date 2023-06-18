@@ -1,11 +1,11 @@
 import discord
 
-from GameSession.Settings import Settings
-import GameSession.SettingsMenu.Role as Role
-import GameSession.SettingsMenu.GameMode as GameMode
-import GameSession.SettingsMenu.Mute as Mute
-import GameSession.SettingsMenu.Time as Time
-import GameSession.SettingsMenu.Reveal as Reveal
+from GameSettings.Settings import Settings
+import GameSettings.SettingsMenu.Role as Role
+import GameSettings.SettingsMenu.GameMode as GameMode
+import GameSettings.SettingsMenu.Mute as Mute
+import GameSettings.SettingsMenu.Time as Time
+import GameSettings.SettingsMenu.Reveal as Reveal
 
 
 class MainScreen(discord.ui.View):
@@ -44,6 +44,7 @@ class MainScreen(discord.ui.View):
         elif interaction.data.get("values")[0] == "Reveal Roles":
             await interaction.response.edit_message(view=Reveal.RevealScreen(self.settings))
         elif interaction.data.get("values")[0] == "Save":
+            # TO-DO: add post/put request to save settings setup.
             await interaction.response.edit_message(content="Changes applied.", view=None)
         elif interaction.data.get("values")[0] == "Discard":
             await interaction.response.edit_message(content="Changes discarded.", view=None)

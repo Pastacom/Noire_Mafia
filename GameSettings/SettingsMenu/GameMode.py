@@ -1,7 +1,7 @@
 import discord
 
-from GameSession.Settings import Settings
-import GameSession.SettingsMenu.Main as Main
+from GameSettings.Settings import Settings
+import GameSettings.SettingsMenu.Main as Main
 
 
 class GameModeScreen(discord.ui.View):
