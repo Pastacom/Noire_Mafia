@@ -9,27 +9,26 @@ import asyncio
 from LobbyManager.Lobby import Lobby
 from Utils.CogStatus import Status
 
-
-async def manage_permissions(category, interaction: discord.Interaction):
-    overwrite = discord.PermissionOverwrite(view_channel=False)
-    for role in category.guild.roles:
-        await category.set_permissions(role, overwrite=overwrite)
-    role = await interaction.guild.create_role(name=category.name, colour=discord.Color.from_rgb(199, 109, 13))
-    overwrite = discord.PermissionOverwrite(view_channel=True)
-    await category.set_permissions(role, overwrite=overwrite)
-    await interaction.user.add_roles(role)
-    return role
-
-
 class Manager(commands.Cog, name="Manager"):
 
-    name_mapping = {"category": "♣›GameSession-{}‹♣", "text_channel": "📨-game-{}", "voice_channel": "🔈-Lobby-{}"}
+    name_mapping = {"category": "♣›GameSettings-{}‹♣", "text_channel": "📨-game-{}", "voice_channel": "🔈-Lobby-{}"}
     lobbies = {}
     join_codes = {}
 
     def __init__(self, client: discord.ext.commands.Bot, mode: Status):
         self.client = client
         self.status = mode
+
+    @staticmethod
+    async def manage_permissions(category, interaction: discord.Interaction):
+        overwrite = discord.PermissionOverwrite(view_channel=False)
+        for role in category.guild.roles:
+            await category.set_permissions(role, overwrite=overwrite)
+        role = await interaction.guild.create_role(name=category.name, colour=discord.Color.from_rgb(199, 109, 13))
+        overwrite = discord.PermissionOverwrite(view_channel=True)
+        await category.set_permissions(role, overwrite=overwrite)
+        await interaction.user.add_roles(role)
+        return role
 
     async def find_id(self):
         lobby_id = -1
@@ -88,7 +87,7 @@ class Manager(commands.Cog, name="Manager"):
                                                              category=category)
         invite = await voice.create_invite(max_age=180, max_uses=1)
         await interaction.response.send_message(invite, ephemeral=True)
-        role = await manage_permissions(category, interaction)
+        role = await self.manage_permissions(category, interaction)
         code = await self.generate_code()
         self.lobbies[lobby_id] = Lobby(category, text, voice, code, role, interaction.user, False)
         self.join_codes[code] = self.lobbies[lobby_id]

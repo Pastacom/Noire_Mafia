@@ -2,8 +2,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-from GameSession.Setup import Setup
+from GameSettings.Setup import Setup
 from LobbyManager.Manager import Manager
+from Roles.Civilian import Civilian
 from Utils.CogStatus import Status
 from config import token
 
@@ -52,5 +53,10 @@ async def action(interaction: discord.Interaction, target: discord.User):
     await interaction.channel.send(f"Gotcha, {target.name}!")
     await interaction.response.send_message(f"Action performed on player {target.name}", ephemeral=True)
 
+
+@client.command(name="a")
+async def abra(ctx: commands.Context):
+    tup = Civilian.get_embed()
+    await ctx.send(file=tup[0], embed=tup[1])
 
 client.run(token)
