@@ -1,6 +1,6 @@
-import asyncio
-
 import discord
+
+from Roles import Role
 
 
 class Player:
@@ -10,3 +10,5 @@ class Player:
         self.role = None
         self.ready = False
 
+    def set_role(self, role: Role):
+        self.role = role

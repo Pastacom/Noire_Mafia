@@ -61,8 +61,8 @@ class Manager(commands.Cog, name="Manager"):
     @app_commands.command(name="create_public_lobby", description="Creates a new public gaming room")
     async def create_public_lobby(self, interaction: discord.Interaction):
         lobby_id = self.players.get(interaction.user.id)
-        if lobby_id:
-            await interaction.response.send_message("You already are a player of another lobby..", ephemeral=True)
+        if lobby_id is not None:
+            await interaction.response.send_message("You already are a player of another lobby.", ephemeral=True)
         else:
             lobby_id = await self.find_id()
             self.players[interaction.user.id] = lobby_id
@@ -86,12 +86,12 @@ class Manager(commands.Cog, name="Manager"):
                 await interaction.response.send_message(invite, ephemeral=True)
                 return
         else:
-            await interaction.response.send_message("No available lobbies, please try again later!", ephemeral=True)
+            await interaction.response.send_message("No available lobbies, please try again later.", ephemeral=True)
 
     @app_commands.command(name="create_private_lobby", description="Creates a new private gaming room")
     async def create_private_lobby(self, interaction: discord.Interaction):
         lobby_id = self.players.get(interaction.user.id)
-        if lobby_id:
+        if lobby_id is not None:
             await interaction.response.send_message("You already are a player of another lobby.", ephemeral=True)
         else:
             lobby_id = await self.find_id()
@@ -107,8 +107,8 @@ class Manager(commands.Cog, name="Manager"):
             code = await self.generate_code()
             self.lobbies[lobby_id] = Lobby(category, text, voice, code, role, interaction.user, False)
             self.join_codes[code] = lobby_id
-            message = await text.send(f"***=== LOBBY JOIN CODE ===***\n\t\t\t{code}\n***==================***",
-                                      silent=True)
+            message = await text.send(f"***=== LOBBY JOIN CODE ===***\n\t\t\t\t**{code}**\n"
+                                      f"***========================***", silent=True)
             await message.pin()
             asyncio.create_task(self.destruction(interaction.user.id))
 
@@ -122,20 +122,26 @@ class Manager(commands.Cog, name="Manager"):
             self.players[interaction.user.id] = lobby_id
             await interaction.response.send_message(invite, ephemeral=True)
         else:
-            await interaction.response.send_message("Lobby with such join code doesn't exist!", ephemeral=True)
+            await interaction.response.send_message("Lobby with such join code doesn't exist.", ephemeral=True)
 
     @app_commands.command(name="start", description="Starts the game in current lobby")
     async def start(self, interaction: discord.Interaction):
         lobby_id = self.players.get(interaction.user.id)
-        if lobby_id:
+        if lobby_id is not None:
             lobby = self.lobbies.get(lobby_id)
             if lobby.host == interaction.user and lobby.status == Lobby.Status.SETUP:
-                await interaction.response.send_message("Ждем подтверждения игроков", ephemeral=True)
-                await self.lobbies.get(lobby_id).create_session()
+                if 1 <= len(lobby.voice_channel.members) <= 15:
+                    await interaction.response.send_message("Ждем подтверждения игроков", ephemeral=True)
+                    await self.lobbies.get(lobby_id).create_session()
+                else:
+                    await interaction.response.send_message(f"Игру можно запустить для количества игроков от 5 до 15."
+                                                            f" На данный момент в лобби"
+                                                            f" {len(lobby.voice_channel.members)} игроков",
+                                                            ephemeral=True)
             else:
-                await interaction.response.send_message("You already launched the game!", ephemeral=True)
+                await interaction.response.send_message("You already launched the game.", ephemeral=True)
         else:
-            await interaction.response.send_message("You are not hosting any lobby!", ephemeral=True)
+            await interaction.response.send_message("You are not hosting any lobby.", ephemeral=True)
 
     @app_commands.command(name="ready", description="Change your readiness before the game")
     async def ready_up(self, interaction: discord.Interaction):
@@ -156,11 +162,31 @@ class Manager(commands.Cog, name="Manager"):
                             pass
                         break
                 else:
-                    await interaction.response.send_message("You are not connected to voice channel!", ephemeral=True)
+                    await interaction.response.send_message("You are not connected to voice channel.", ephemeral=True)
                 if lobby.waiting_players == 0:
                     await lobby.set_default_nicknames()
-                    await lobby.text_channel.send("***Игра начинается!***")
+                    await lobby.give_roles()
+                    await lobby.text_channel.send("**\nПосмотрите свою роль в личных сообщениях.**")
+                    await asyncio.sleep(10)
+                    settings = await self.client.get_cog("Setup").get_settings(lobby.host.id)
+                    if settings.game_mode_auto:
+                        await lobby.launch_game(settings)
+                    else:
+                        await lobby.text_channel.send("Далее игру проведет ведущий. Приятной игры!")
             else:
-                await interaction.response.send_message("Your host is setting up the game!", ephemeral=True)
+                await interaction.response.send_message("You can't change your readiness now.", ephemeral=True)
         else:
-            await interaction.response.send_message("You are not in lobby!", ephemeral=True)
+            await interaction.response.send_message("You are not in lobby.", ephemeral=True)
+
+    @app_commands.command(name="end_speech", description="Ends your speech earlier")
+    async def end_turn(self, interaction: discord.Interaction):
+        lobby_id = self.players.get(interaction.user.id)
+        if lobby_id is not None:
+            lobby = self.lobbies.get(lobby_id)
+            if lobby.status == Lobby.Status.PLAYING:
+                await interaction.response.send_message("Вы досрочно завершили свою речь.", ephemeral=True)
+                await lobby.session.end(interaction.user)
+            else:
+                await interaction.response.send_message("This command can be use only in game.", ephemeral=True)
+        else:
+            await interaction.response.send_message("You are not in lobby.", ephemeral=True)
