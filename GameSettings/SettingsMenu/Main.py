@@ -11,7 +11,7 @@ import GameSettings.SettingsMenu.Reveal as Reveal
 class MainScreen(discord.ui.View):
     def __init__(self, settings: Settings):
         options = [
-            discord.SelectOption(label="Roles", emoji='🤠',
+            discord.SelectOption(label="Roles(N/I)", emoji='🤠',
                                  description="Choose which roles will be envolved in game."),
             discord.SelectOption(label="Game Mode", emoji='⚙',
                                  description="Choose whether human or bot will lead this game."),
@@ -33,8 +33,10 @@ class MainScreen(discord.ui.View):
         self.settings = settings
 
     async def select_callback(self, interaction: discord.Interaction):
-        if interaction.data.get("values")[0] == "Roles":
+        # TO-DO: think of demand of roles customization
+        if interaction.data.get("values")[0] == "Roles(N/I)":
             await interaction.response.edit_message(view=Role.RoleScreen(self.settings))
+        # TO-DO: think of demand of human-leaded game
         elif interaction.data.get("values")[0] == "Game Mode":
             await interaction.response.edit_message(view=GameMode.GameModeScreen(self.settings))
         elif interaction.data.get("values")[0] == "Mute":

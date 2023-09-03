@@ -6,5 +6,4 @@ class Settings:
                    "condemned speech": 60, "single role": 40, "team role": 90}
 
     role_seed = {"civilian": True, "mafia": True, "don": True, "commissioner": True,
-                 "doctor": False, "maniac": False, "courtesan": False, "immortal": False,
-                 "two-face": False, "thief": False, "sergeant": False, "shapeshifter": False}
+                 "doctor": False, "courtesan": False}
