@@ -32,33 +32,31 @@ class Lobby:
         self.role = role
         self.host = host
         self.public = public
-        self.players = []
+        self.user_to_player = {}
         self.waiting_players = 0
         self.session = None
 
     async def set_default_nicknames(self):
-        for player in self.players:
+        for user in self.user_to_player.keys():
             try:
-                await player.user.edit(nick=player.user.name)
+                await user.edit(nick=user.name)
             except discord.Forbidden:
                 pass
 
     async def launch_game(self, settings: Settings):
-        self.session = Session(self.text_channel, self.voice_channel, self.players, settings)
-        self.status = self.Status.PLAYING
+        self.session = Session(self.text_channel, self.voice_channel, self.user_to_player, settings)
         await self.session.start()
 
     async def create_session(self):
         self.status = self.Status.READY
         for user in self.voice_channel.members:
-            self.players.append(Player(user))
-        random.shuffle(self.players)
+            self.user_to_player[user] = Player()
         self.waiting_players = len(self.voice_channel.members)
         text = "Пожалуйста, подтвердите свою готовность к игре.\n"
-        for player in self.players:
-            text += player.user.mention + '\n'
+        for user in self.user_to_player.keys():
+            text += user.mention + '\n'
             try:
-                await player.user.edit(nick=player.user.name + ' ❌')
+                await user.edit(nick=user.name + ' ❌')
             except discord.Forbidden:
                 pass
         await self.text_channel.send(text)
@@ -80,7 +78,7 @@ class Lobby:
 
     async def give_roles(self):
         roles = [Don, Commissioner, Doctor]
-        players_count = len(self.players) - 3
+        players_count = len(self.user_to_player) - 3
         mafia_count = math.ceil(players_count / 4) - 1
         players_count -= mafia_count
         for i in range(mafia_count):
@@ -88,16 +86,15 @@ class Lobby:
         for i in range(players_count):
             roles.append(Civilian)
         random.shuffle(roles)
-        for i in range(len(self.players)):
-            self.players[i].set_role(roles[i])
+        i = 0
+        for user, player in self.user_to_player.items():
+            player.set_role(roles[i])
             role_to_send = roles[i].get_embed()
-            await self.players[i].user.send(file=role_to_send[0], embed=role_to_send[1])
+            await user.send(file=role_to_send[0], embed=role_to_send[1])
+            i += 1
         await self.text_channel.send("**Роли игроков в игре:**" + "\n\n" +
-                       f"Мирных жителей: {players_count}\n" +
-                       f"Мафий: {mafia_count}\n" +
-                       "Дон мафии\n" +
-                       "Комиссар\n" +
-                       "Доктор\n\n")
-
-
-
+                                     f"Мирных жителей: {players_count}\n" +
+                                     f"Мафий: {mafia_count}\n" +
+                                     "Дон мафии\n" +
+                                     "Комиссар\n" +
+                                     "Доктор\n\n")

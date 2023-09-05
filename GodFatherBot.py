@@ -47,13 +47,6 @@ async def sync(ctx: commands.Context):
     await ctx.send(f"Synced {len(data)} commands.")
 
 
-@client.tree.command(name="action", description="Make an action at the night if you have an active role!")
-@app_commands.describe(target="Player that would be affected by your action")
-async def action(interaction: discord.Interaction, target: discord.User):
-    await interaction.channel.send(f"Gotcha, {target.name}!")
-    await interaction.response.send_message(f"Action performed on player {target.name}", ephemeral=True)
-
-
 @client.command(name="a")
 async def abra(ctx: commands.Context):
     tup = Civilian.get_embed()

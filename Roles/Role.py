@@ -35,6 +35,16 @@ class Role(ABC):
     def multiplier(self):
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def night_answer(self):
+        raise NotImplementedError
+
+    @staticmethod
+    @abstractmethod
+    async def night_info(interaction: discord.Interaction, target: str, player):
+        raise NotImplementedError
+
     @classmethod
     def get_embed(cls):
         emb = discord.Embed(title=f"Ваша роль — {cls.name}.", colour=discord.Color.darker_grey())
