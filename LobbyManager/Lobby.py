@@ -43,6 +43,14 @@ class Lobby:
             except discord.Forbidden:
                 pass
 
+    async def restart_game(self):
+        self.status = self.Status.SETUP
+        if self.session is not None:
+            await self.session.mute_all(False)
+            self.session = None
+        await self.set_default_nicknames()
+        self.user_to_player.clear()
+
     async def launch_game(self, settings: Settings):
         self.session = Session(self.text_channel, self.voice_channel, self.user_to_player, settings)
         await self.session.start()
@@ -65,8 +73,7 @@ class Lobby:
         await asyncio.sleep(10)
         while len(self.voice_channel.members) != 0:
             await asyncio.sleep(10)
-        if self.role != self.category.guild.default_role:
-            await self.role.delete()
+        await self.role.delete()
         await self.text_channel.delete()
         await self.voice_channel.delete()
         await self.category.delete()
@@ -78,7 +85,7 @@ class Lobby:
 
     async def give_roles(self):
         roles = [Don, Commissioner, Doctor]
-        players_count = len(self.user_to_player) - 3
+        players_count = len(self.user_to_player) - 2
         mafia_count = math.ceil(players_count / 4) - 1
         players_count -= mafia_count
         for i in range(mafia_count):

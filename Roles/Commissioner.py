@@ -18,7 +18,7 @@ class Commissioner(Role):
 
     @staticmethod
     async def night_info(interaction: discord.Interaction, target: str, player: Player):
-        if player.role == Mafia:
+        if player.role == Mafia or issubclass(player.role, Mafia):
             await interaction.response.send_message(Commissioner.night_answer[0].format(target), ephemeral=True)
         else:
             await interaction.response.send_message(Commissioner.night_answer[1].format(target), ephemeral=True)

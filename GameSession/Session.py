@@ -10,6 +10,7 @@ from Roles.Commissioner import Commissioner
 from Roles.Doctor import Doctor
 from Roles.Don import Don
 from Roles.Mafia import Mafia
+from Roles.Role import Role
 
 
 class Session:
@@ -51,6 +52,15 @@ class Session:
             for user in self.user_to_player.keys():
                 try:
                     await user.edit(mute=mute)
+                except discord.HTTPException:
+                    pass
+
+    async def mute_all_alive(self, mute=True):
+        if self.settings.mutes:
+            for user, player in self.user_to_player.items():
+                try:
+                    if player.status == Player.Status.ALIVE:
+                        await user.edit(mute=mute)
                 except discord.HTTPException:
                     pass
 
@@ -99,18 +109,22 @@ class Session:
 
     async def action(self, interaction: discord.Interaction, target: discord.User):
         if target not in self.user_to_player:
-            await interaction.response.send_message(f"There is no player in game with name {target.mention}",
+            await interaction.response.send_message(f"В игре нет игрок с именем {target.mention}.",
+                                                    ephemeral=True)
+            return
+        if self.user_to_player[target].status != Player.Status.ALIVE:
+            await interaction.response.send_message(f"Игрок с именем {target.mention} уже мертв.",
                                                     ephemeral=True)
             return
         player = self.user_to_player[interaction.user]
         if player.status != Player.Status.ALIVE:
-            await interaction.response.send_message(f"Player with name {target.mention} is already dead", ephemeral=True)
+            await interaction.response.send_message(f"Вы не можете совершать действия, будучи мертвым.", ephemeral=True)
             return
         if not player.action_available:
-            await interaction.response.send_message(f"Wait for your turn to make an action", ephemeral=True)
+            await interaction.response.send_message(f"Дождитесь своего хода, чтобы действовать.", ephemeral=True)
             return
         if player.action_performed:
-            await interaction.response.send_message(f"You have already made an action during the night",
+            await interaction.response.send_message(f"Вы уже совершили свое действие ночью.",
                                                     ephemeral=True)
             return
         if player.role == Doctor:
@@ -125,15 +139,37 @@ class Session:
         player.action_performed = True
         player.last_target = target
         if issubclass(player.role, self.current_role):
-            await self.current_role.night_info(interaction, target.mention, player)
+            await self.current_role.night_info(interaction, target.mention, self.user_to_player[target])
         else:
-            await player.role.night_info(interaction, target.mention, player)
+            await player.role.night_info(interaction, target.mention, self.user_to_player[target])
+
+    async def whisper(self, interaction: discord.Interaction, message: discord.Message):
+        player = self.user_to_player[interaction.user]
+        if player.status != Player.Status.ALIVE:
+            await interaction.response.send_message(f"Вы не можете шептать, будучи мертвым.", ephemeral=True)
+            return
+        if not player.action_available:
+            await interaction.response.send_message(f"Дождитесь своего хода, чтобы шепнуть.", ephemeral=True)
+            return
+        if self.status != self.Status.TEAM_ROLE_TURN:
+            await interaction.response.send_message(f"Вы играете в одиночку.", ephemeral=True)
+            return
+        await interaction.response.send_message(f"Вы отправили сообщение своей команде.", ephemeral=True)
+        for user, active_player in self.user_to_player.items():
+            if (active_player.role == self.current_role or
+                    issubclass(active_player.role, self.current_role) and interaction.user != user):
+                await user.send(f"{interaction.user.name}({player.role.name}): {message}")
 
     async def prepare_night_turn(self):
         for player in self.user_to_player.values():
             if player.role == self.current_role or issubclass(player.role, self.current_role):
                 player.action_available = True
                 player.action_performed = False
+
+    async def end_night_turn(self):
+        for player in self.user_to_player.values():
+            if player.role == self.current_role or issubclass(player.role, self.current_role):
+                player.action_available = False
 
     async def mafia_turn(self):
         user_count = {}
@@ -159,8 +195,66 @@ class Session:
         elif case == 3:
             await self.doctor_turn()
 
-    async def night(self):
+    async def end_game(self):
+        emb = discord.Embed(title=f"Роли игроков:", colour=discord.Color.darker_grey())
+        for user, player in self.user_to_player.items():
+            emb.add_field(name=f"{user.name} — {player.role.name}", value="", inline=False)
+        await self.text_channel.send(embed=emb)
+
+    async def win_condition(self):
+        mafia = 0
+        red = 0
+        total = 0
+        for player in self.user_to_player.values():
+            if player.status == Player.Status.ALIVE:
+                if player.role == Mafia or issubclass(player.role, Mafia):
+                    mafia += 1
+                elif player.role.team == Role.RoleTeam.RED:
+                    red += 1
+                total += 1
+        if total == 0:
+            await self.text_channel.send("**Игра окончена! Ничья. В городе не осталось живых** 💀")
+            return True
+        elif mafia >= red and mafia > 0:
+            await self.text_channel.send("**Игра окончена! Победа мафии** 🕵️")
+            return True
+        elif mafia == 0 and red > 0:
+            await self.text_channel.send("**Игра окончена! Победа мирного города** 👥")
+            return True
+        return False
+
+    async def kill_players(self):
+        for user in self.killed:
+            self.user_to_player[user].status = Player.Status.DEAD
+            if self.settings.hide:
+                await self.text_channel.send(f"💀 **Ночью был убит игрок {user.mention}** 💀")
+            else:
+                await self.text_channel.send(f"💀 **Ночью был убит игрок {user.mention} —"
+                                             f" {self.user_to_player[user].role.name}** 💀")
+            try:
+                await user.edit(nick=user.name + ' 💀')
+            except discord.Forbidden:
+                pass
+            break
+        else:
+            await self.text_channel.send(f"🚫 **Ночью никто не был убит** 🚫")
         self.killed.clear()
+
+    async def day(self):
+        await self.text_channel.send("⏰ **Город просыпается** ⏰")
+        await asyncio.sleep(5)
+        await self.text_channel.send("🌇 **Наступает день** 🌇")
+        await self.kill_players()
+        if await self.win_condition():
+            await self.end_game()
+        else:
+            await asyncio.sleep(5)
+            await self.text_channel.send("🌇 **Обсуждайте** 🌇")
+            await self.night()
+
+    async def night(self):
+        await self.text_channel.send("💤 **Город засыпает** 💤")
+        await asyncio.sleep(5)
         await self.text_channel.send("🌃 **Наступает ночь** 🌃")
         for i, role in enumerate(Session.turns_sequence):
             self.action_targets.clear()
@@ -169,7 +263,9 @@ class Session:
             await self.prepare_night_turn()
             key = "single role" if self.status == self.Status.SINGLE_ROLE_TURN else "team role"
             await self.night_timer(self.settings.time_limits.get(key))
+            await self.end_night_turn()
             await self.turn_result(i)
+        await self.day()
 
     async def meeting_day(self):
         self.status = self.Status.DAY_SPEECH_WITHOUT_VOTES
@@ -180,8 +276,6 @@ class Session:
             await self.mute(user, False)
             await self.day_timer(self.settings.time_limits.get("day speech"), user)
             await self.mute(user)
-        await self.text_channel.send("💤 **Город засыпает** 💤")
-        await asyncio.sleep(5)
         await self.night()
 
     async def start(self):

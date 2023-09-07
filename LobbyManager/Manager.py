@@ -10,15 +10,6 @@ from LobbyManager.Lobby import Lobby
 from Utils.CogStatus import Status
 
 
-def guild_only_check():
-    async def predicate(interaction: discord.Interaction):
-        if interaction.guild is None:
-            await interaction.response.send_message("This command is not allowed in DM.", ephemeral=True)
-            return False
-        return True
-    return commands.check(predicate)
-
-
 class Manager(commands.Cog, name="Manager"):
 
     name_mapping = {"category": "♣›GameSession-{}‹♣", "text_channel": "📨-game-{}", "voice_channel": "🔈-Lobby-{}"}
@@ -67,43 +58,20 @@ class Manager(commands.Cog, name="Manager"):
         self.lobbies.pop(lobby_id)
         self.user_to_lobby_id.pop(user_id)
 
-    @app_commands.command(name="create_public_lobby", description="Creates a new public gaming room")
-    @app_commands.guild_only()
-    async def create_public_lobby(self, interaction: discord.Interaction):
+    async def remove_player_mapping(self, user):
+        await asyncio.sleep(10)
+        lobby_id = self.user_to_lobby_id[user.id]
+        lobby = self.lobbies[lobby_id]
+        while ((lobby.voice_channel is not None) and
+               (user in lobby.voice_channel.members)):
+            await asyncio.sleep(10)
+        await user.remove_roles(lobby.role)
+        self.user_to_lobby_id.pop(user.id)
+
+    async def create_lobby(self, interaction: discord.Interaction, public):
         lobby_id = self.user_to_lobby_id.get(interaction.user.id)
         if lobby_id is not None:
-            await interaction.response.send_message("You already are a player of another lobby.", ephemeral=True)
-        else:
-            lobby_id = await self.find_id()
-            self.user_to_lobby_id[interaction.user.id] = lobby_id
-            category = await interaction.guild.create_category(self.name_mapping.get("category").format(lobby_id))
-            text = await interaction.guild.create_text_channel(self.name_mapping.get("text_channel").format(lobby_id),
-                                                               category=category)
-            voice = await interaction.guild.create_voice_channel(self.name_mapping.get("voice_channel").format(lobby_id),
-                                                                 category=category)
-            invite = await voice.create_invite(max_age=180, max_uses=1)
-            await interaction.response.send_message(invite, ephemeral=True)
-            self.lobbies[lobby_id] = Lobby(category, text, voice, "0", interaction.guild.default_role, interaction.user)
-            asyncio.create_task(self.destruction(interaction.user.id))
-
-    @app_commands.command(name="join_public_lobby", description="Join public lobby that hasn't started the game yet")
-    async def join_public_lobby(self, interaction: discord.Interaction):
-        for lobby_id in self.lobbies.keys():
-            lobby = self.lobbies.get(lobby_id)
-            if lobby.public and lobby.status == Lobby.Status.SETUP:
-                self.user_to_lobby_id[interaction.user.id] = lobby_id
-                invite = await lobby.voice_channel.create_invite(max_age=180, max_uses=1)
-                await interaction.response.send_message(invite, ephemeral=True)
-                return
-        else:
-            await interaction.response.send_message("No available lobbies, please try again later.", ephemeral=True)
-
-    @app_commands.command(name="create_private_lobby", description="Creates a new private gaming room")
-    @app_commands.guild_only()
-    async def create_private_lobby(self, interaction: discord.Interaction):
-        lobby_id = self.user_to_lobby_id.get(interaction.user.id)
-        if lobby_id is not None:
-            await interaction.response.send_message("You already are a player of another lobby.", ephemeral=True)
+            await interaction.response.send_message("Вы уже являетесь игроком в другом лобби.", ephemeral=True)
         else:
             lobby_id = await self.find_id()
             self.user_to_lobby_id[interaction.user.id] = lobby_id
@@ -115,25 +83,62 @@ class Manager(commands.Cog, name="Manager"):
             invite = await voice.create_invite(max_age=180, max_uses=1)
             await interaction.response.send_message(invite, ephemeral=True)
             role = await self.manage_permissions(category, interaction)
-            code = await self.generate_code()
-            self.lobbies[lobby_id] = Lobby(category, text, voice, code, role, interaction.user, False)
-            self.join_codes[code] = lobby_id
-            message = await text.send(f"***=== LOBBY JOIN CODE ===***\n\t\t\t\t**{code}**\n"
-                                      f"***========================***", silent=True)
-            await message.pin()
-            asyncio.create_task(self.destruction(interaction.user.id))
+            code = "0"
+            if not public:
+                code = await self.generate_code()
+                self.join_codes[code] = lobby_id
+                message = await text.send(f"***=== LOBBY JOIN CODE ===***\n\t\t\t\t**{code}**\n"
+                                          f"***========================***", silent=True)
+                await message.pin()
+            self.lobbies[lobby_id] = Lobby(category, text, voice, code, role, interaction.user, public)
+
+    @app_commands.command(name="create_public_lobby", description="Creates a new public gaming room")
+    @app_commands.guild_only()
+    async def create_public_lobby(self, interaction: discord.Interaction):
+        await self.create_lobby(interaction, True)
+        asyncio.create_task(self.destruction(interaction.user.id))
+
+    @app_commands.command(name="join_public_lobby", description="Join public lobby that hasn't started the game yet")
+    async def join_public_lobby(self, interaction: discord.Interaction):
+        lobby_id = self.user_to_lobby_id.get(interaction.user.id)
+        if lobby_id is not None:
+            await interaction.response.send_message("Вы уже являетесь игроком в другом лобби.", ephemeral=True)
+        else:
+            for lobby_id in self.lobbies.keys():
+                lobby = self.lobbies.get(lobby_id)
+                if lobby.public and lobby.status == Lobby.Status.SETUP:
+                    await interaction.user.add_roles(self.lobbies.get(lobby_id).role)
+                    self.user_to_lobby_id[interaction.user.id] = lobby_id
+                    invite = await lobby.voice_channel.create_invite(max_age=180, max_uses=1)
+                    await interaction.response.send_message(invite, ephemeral=True)
+                    asyncio.create_task(self.remove_player_mapping(interaction.user))
+                    return
+            else:
+                await interaction.response.send_message("Нет доступных лобби, попробуйте позднее.", ephemeral=True)
+
+    @app_commands.command(name="create_private_lobby", description="Creates a new private gaming room")
+    @app_commands.guild_only()
+    async def create_private_lobby(self, interaction: discord.Interaction):
+        await self.create_lobby(interaction, False)
+        asyncio.create_task(self.destruction(interaction.user.id))
 
     @app_commands.command(name="join_private_lobby", description="Join private lobby")
     @app_commands.describe(code="Lobby's join code")
     async def join_private_lobby(self, interaction: discord.Interaction, code: str):
-        if self.check_code(code):
-            lobby_id = self.join_codes.get(code)
-            invite = await self.lobbies.get(lobby_id).voice_channel.create_invite(max_age=180, max_uses=1)
-            await interaction.user.add_roles(self.lobbies.get(lobby_id).role)
-            self.user_to_lobby_id[interaction.user.id] = lobby_id
-            await interaction.response.send_message(invite, ephemeral=True)
+        lobby_id = self.user_to_lobby_id.get(interaction.user.id)
+        if lobby_id is not None:
+            await interaction.response.send_message("Вы уже являетесь игроком в другом лобби.", ephemeral=True)
         else:
-            await interaction.response.send_message("Lobby with such join code doesn't exist.", ephemeral=True)
+            if self.check_code(code):
+                lobby_id = self.join_codes.get(code)
+                invite = await self.lobbies.get(lobby_id).voice_channel.create_invite(max_age=180, max_uses=1)
+                await interaction.user.add_roles(self.lobbies.get(lobby_id).role)
+                self.user_to_lobby_id[interaction.user.id] = lobby_id
+                await interaction.response.send_message(invite, ephemeral=True)
+                asyncio.create_task(self.remove_player_mapping(interaction.user))
+                return
+            else:
+                await interaction.response.send_message("Лобби с таким кодом не существует.", ephemeral=True)
 
     @app_commands.command(name="start", description="Starts the game in current lobby")
     async def start(self, interaction: discord.Interaction):
@@ -150,9 +155,9 @@ class Manager(commands.Cog, name="Manager"):
                                                             f" {len(lobby.voice_channel.members)} игроков",
                                                             ephemeral=True)
             else:
-                await interaction.response.send_message("You already launched the game.", ephemeral=True)
+                await interaction.response.send_message("Вы уже запустили игру.", ephemeral=True)
         else:
-            await interaction.response.send_message("You are not hosting any lobby.", ephemeral=True)
+            await interaction.response.send_message("Вы не являетесь хостом какого-либо лобби.", ephemeral=True)
 
     @app_commands.command(name="ready", description="Change your readiness before the game")
     async def ready_up(self, interaction: discord.Interaction):
@@ -172,7 +177,7 @@ class Manager(commands.Cog, name="Manager"):
                                                             else "Вы не готовы к игре.",
                                                             ephemeral=True)
                 else:
-                    await interaction.response.send_message("You are not connected to voice channel.", ephemeral=True)
+                    await interaction.response.send_message("Вы не подключены к голосовому каналу.", ephemeral=True)
                 if lobby.waiting_players == 0:
                     lobby.status = Lobby.Status.PLAYING
                     await lobby.set_default_nicknames()
@@ -181,27 +186,29 @@ class Manager(commands.Cog, name="Manager"):
                     await asyncio.sleep(10)
                     settings = await self.client.get_cog("Setup").get_settings(lobby.host.id)
                     if settings.game_mode_auto:
-                        asyncio.create_task(lobby.launch_game(settings))
+                        await lobby.launch_game(settings)
+                        await lobby.restart_game()
                     else:
                         await lobby.text_channel.send("Далее игру проведет ведущий. Приятной игры!")
             else:
-                await interaction.response.send_message("You can't change your readiness now.", ephemeral=True)
+                await interaction.response.send_message("Вы не можете изменить свою готовность сейчас.", ephemeral=True)
         else:
-            await interaction.response.send_message("You are not in lobby.", ephemeral=True)
+            await interaction.response.send_message("Вы не в лобби.", ephemeral=True)
 
     @app_commands.command(name="end_speech", description="Ends your speech earlier")
-    async def end_turn(self, interaction: discord.Interaction):
+    async def end_speech(self, interaction: discord.Interaction):
         lobby_id = self.user_to_lobby_id.get(interaction.user.id)
         if lobby_id is not None:
             lobby = self.lobbies.get(lobby_id)
             if lobby.status == Lobby.Status.PLAYING:
                 await lobby.session.end(interaction)
             else:
-                await interaction.response.send_message("This command can be use only in game.", ephemeral=True)
+                await interaction.response.send_message("Эта команда может быть использована только в игре.",
+                                                        ephemeral=True)
         else:
-            await interaction.response.send_message("You are not in lobby.", ephemeral=True)
+            await interaction.response.send_message("Вы не в лобби.", ephemeral=True)
 
-    @app_commands.command(name="action", description="Make an action at the night if you have an active role!")
+    @app_commands.command(name="action", description="Make an action during the night if you have an active role")
     @app_commands.describe(target="Player that would be affected by your action")
     async def action(self, interaction: discord.Interaction, target: discord.User):
         lobby_id = self.user_to_lobby_id.get(interaction.user.id)
@@ -210,7 +217,35 @@ class Manager(commands.Cog, name="Manager"):
             if lobby.status == Lobby.Status.PLAYING:
                 await lobby.session.action(interaction, target)
             else:
-                await interaction.response.send_message("This command can be use only in game.", ephemeral=True)
+                await interaction.response.send_message("Эта команда может быть использована только в игре.",
+                                                        ephemeral=True)
         else:
-            await interaction.response.send_message("You are not in lobby.", ephemeral=True)
+            await interaction.response.send_message("Вы не в лобби.", ephemeral=True)
 
+    @app_commands.command(name="whisper", description="Say something to your team during the night")
+    @app_commands.describe(message="Message to your team")
+    async def whisper(self, interaction: discord.Interaction, message: str):
+        lobby_id = self.user_to_lobby_id.get(interaction.user.id)
+        if lobby_id is not None:
+            lobby = self.lobbies.get(lobby_id)
+            if lobby.status == Lobby.Status.PLAYING:
+                await lobby.session.whisper(interaction, message)
+            else:
+                await interaction.response.send_message("Эта команда может быть использована только в игре.",
+                                                        ephemeral=True)
+        else:
+            await interaction.response.send_message("Вы не в лобби.", ephemeral=True)
+
+    @app_commands.command(name="restart", description="Restarts lobby before the game")
+    async def restart(self, interaction: discord.Interaction):
+        lobby_id = self.user_to_lobby_id.get(interaction.user.id)
+        if lobby_id is not None:
+            lobby = self.lobbies.get(lobby_id)
+            if lobby.host == interaction.user and lobby.status != Lobby.Status.PLAYING:
+                await lobby.restart_game()
+                await interaction.response.send_message("Игра сброшена.", ephemeral=True)
+            else:
+                await interaction.response.send_message("Вы не являетесь хостом или вызываете команду во время игры.",
+                                                        ephemeral=True)
+        else:
+            await interaction.response.send_message("Вы не являетесь хостом какого-либо лобби.", ephemeral=True)
