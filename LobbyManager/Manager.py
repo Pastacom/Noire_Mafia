@@ -249,3 +249,16 @@ class Manager(commands.Cog, name="Manager"):
                                                         ephemeral=True)
         else:
             await interaction.response.send_message("Вы не являетесь хостом какого-либо лобби.", ephemeral=True)
+
+    @app_commands.command(name="vote", description="Vote to condemn the player")
+    async def vote(self, interaction: discord.Interaction):
+        lobby_id = self.user_to_lobby_id.get(interaction.user.id)
+        if lobby_id is not None:
+            lobby = self.lobbies.get(lobby_id)
+            if lobby.status == Lobby.Status.PLAYING:
+                await lobby.session.vote(interaction)
+            else:
+                await interaction.response.send_message("Эта команда может быть использована только в игре.",
+                                                        ephemeral=True)
+        else:
+            await interaction.response.send_message("Вы не в лобби.", ephemeral=True)

@@ -46,10 +46,4 @@ async def sync(ctx: commands.Context):
     data = await client.tree.sync()
     await ctx.send(f"Synced {len(data)} commands.")
 
-
-@client.command(name="a")
-async def abra(ctx: commands.Context):
-    tup = Civilian.get_embed()
-    await ctx.send(file=tup[0], embed=tup[1])
-
 client.run(token)
