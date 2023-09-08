@@ -44,6 +44,9 @@ class TimeScreen(discord.ui.View):
     def __init__(self, settings: Settings):
         options = [
             discord.SelectOption(label="Back", emoji='⬅'),
+            discord.SelectOption(label="Meeting speech: {}"
+                                 .format(get_time(settings.time_limits.get("meeting speech"))), emoji='🤝',
+                                 description="Time allotted for meeting speech.", value="Day"),
             discord.SelectOption(label="Day speech: {}"
                                  .format(get_time(settings.time_limits.get("day speech"))), emoji='☀',
                                  description="Time allotted for day speech.", value="Day"),
@@ -72,6 +75,8 @@ class TimeScreen(discord.ui.View):
     async def select_callback(self, interaction: discord.Interaction):
         if interaction.data.get("values")[0] == "Back":
             await interaction.response.edit_message(view=Main.MainScreen(self.settings))
+        elif interaction.data.get("values")[0] == "Meeting":
+            await interaction.response.edit_message(view=TimeOptionScreen(self.settings, "meeting speech"))
         elif interaction.data.get("values")[0] == "Day":
             await interaction.response.edit_message(view=TimeOptionScreen(self.settings, "day speech"))
         elif interaction.data.get("values")[0] == "Justification":

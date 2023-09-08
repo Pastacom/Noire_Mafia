@@ -12,8 +12,8 @@ class Civilian(Role):
                   " Сделать это вы можете только на дневном голосовании."
     image = "Data/civilian.jpg"
     multiplier = 1.4
-    night_answer = ["Вы перевернулись на другой бок. Мирные жители не ходят ночью!"]
+    role_answer = ["Вы выставили игрока {} на голосование."]
 
     @staticmethod
-    async def night_info(interaction: discord.Interaction, target: str, player: Player):
-        await interaction.response.send_message(Civilian.night_answer[0], ephemeral=True)
+    async def role_info(interaction: discord.Interaction, target: str, player: Player):
+        await interaction.response.send_message(Civilian.role_answer[0].format(target), ephemeral=True)

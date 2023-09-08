@@ -37,12 +37,12 @@ class Role(ABC):
 
     @property
     @abstractmethod
-    def night_answer(self):
+    def role_answer(self):
         raise NotImplementedError
 
     @staticmethod
     @abstractmethod
-    async def night_info(interaction: discord.Interaction, target: str, player):
+    async def role_info(interaction: discord.Interaction, target: str, player):
         raise NotImplementedError
 
     @classmethod

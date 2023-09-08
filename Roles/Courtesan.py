@@ -1,10 +1,11 @@
 import discord
 
+from Roles.Civilian import Civilian
 from Roles.Role import Role
 from GameSession.Player import Player
 
 
-class Courtesan(Role):
+class Courtesan(Civilian):
     team = Role.RoleTeam.RED
     name = "Куртизанка"
     description = "Вы играете за красных. Ваша задача - спасать красных." \
@@ -16,8 +17,8 @@ class Courtesan(Role):
                   " Если мафиози остается один и вы выбираете его, то мафиози не убивают этой ночью."
     image = "Data/civilian.jpg"
     multiplier = 1.5
-    night_answer = ["(N/I) {}"]
+    role_answer = ["(N/I) {}"]
 
     @staticmethod
-    async def night_info(interaction: discord.Interaction, target: str, player: Player):
-        await interaction.response.send_message(Courtesan.night_answer[0].format(target), ephemeral=True)
+    async def role_info(interaction: discord.Interaction, target: str, player: Player):
+        await interaction.response.send_message(Courtesan.role_answer[0].format(target), ephemeral=True)
