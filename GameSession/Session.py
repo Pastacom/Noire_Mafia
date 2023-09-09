@@ -162,10 +162,10 @@ class Session:
                     return
             player.last_target = target
         if self.current_role == Civilian:
-            if target not in self.action_targets:
-                self.action_targets.append(target)
-        else:
-            self.action_targets.append(target)
+            if target in self.action_targets:
+                await interaction.response.send_message("Этот игрок уже выставлен на голосование.", ephemeral=True)
+                return
+        self.action_targets.append(target)
         player.action_performed = True
         if issubclass(player.role, self.current_role):
             await self.current_role.role_info(interaction, target.mention, self.user_to_player[target])
@@ -306,16 +306,16 @@ class Session:
         for user in self.action_targets:
             self.votes[user] = []
         self.status = Session.Status.VOTE
-        for player in self.user_to_player.value():
+        for player in self.user_to_player.values():
             player.action_performed = False
         for user in self.action_targets:
             self.turn = user
             await self.vote_timer(self.get_time(), user)
             message = f"Против игрока никто не проголосовал."
             if len(self.votes[self.turn]) != 0:
-                message = f"Против игрока {self.turn} проголосовало {self.votes[self.turn]}:\n"
-                for voted_player in self.votes[self.turn]:
-                    message += f"{voted_player}\n"
+                message = f"Против игрока {self.turn.mention} проголосовало {len(self.votes[self.turn])}:\n"
+                for i, voted_player in enumerate(self.votes[self.turn]):
+                    message += f"{i+1}. {voted_player.mention}\n"
             await self.text_channel.send(message)
         self.turn = None
 
@@ -334,19 +334,20 @@ class Session:
         await asyncio.sleep(5)
         await self.text_channel.send("🌇 **Наступает день** 🌇")
         await self.kill_players()
-        if await self.win_condition():
-            await self.end_game()
-            return
+        #if await self.win_condition():
+           # await self.end_game()
+            #return
         await asyncio.sleep(5)
         await self.day_speech()
         if len(self.action_targets) == 0:
-            await self.text_channel.send("🚫 **Было принято решение никого не выставлять на голосование** 🚫️")
+            await self.text_channel.send("🚫 **Было принято решение никого не выставлять на голосование** 🚫")
         else:
             await self.justification_speech()
             await self.voting()
 
             if await self.win_condition():
                 await self.end_game()
+                return
         await self.night()
 
     async def night(self):
