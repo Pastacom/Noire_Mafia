@@ -65,7 +65,10 @@ class Manager(commands.Cog, name="Manager"):
         while ((lobby.voice_channel is not None) and
                (user in lobby.voice_channel.members)):
             await asyncio.sleep(10)
-        await user.remove_roles(lobby.role)
+        try:
+            await user.remove_roles(lobby.role)
+        except discord.NotFound:
+            pass
         self.user_to_lobby_id.pop(user.id)
 
     async def create_lobby(self, interaction: discord.Interaction, public):
@@ -208,7 +211,7 @@ class Manager(commands.Cog, name="Manager"):
         else:
             await interaction.response.send_message("Вы не в лобби.", ephemeral=True)
 
-    @app_commands.command(name="action", description="Make an action during the night if you have an active role")
+    @app_commands.command(name="action", description="Make an action of your role")
     @app_commands.describe(target="Player that would be affected by your action")
     async def action(self, interaction: discord.Interaction, target: discord.User):
         lobby_id = self.user_to_lobby_id.get(interaction.user.id)

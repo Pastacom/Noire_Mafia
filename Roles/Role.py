@@ -47,7 +47,7 @@ class Role(ABC):
 
     @classmethod
     def get_embed(cls):
-        emb = discord.Embed(title=f"Ваша роль — {cls.name}.", colour=discord.Color.darker_grey())
+        emb = discord.Embed(title=f"Ваша роль — {cls.name}.", colour=discord.Color.from_rgb(199, 109, 13))
         emb.add_field(name="Описание роли:", value=cls.description)
         file = discord.File(f"{cls.image}", filename="image.png")
         emb.set_image(url=f"attachment://image.png")

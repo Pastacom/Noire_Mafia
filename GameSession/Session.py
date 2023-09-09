@@ -33,12 +33,12 @@ class Session:
                                 "👮**Игрок {} был посажен в тюрьму — {}**👮",
                                 " 👮",
                                 "🚫 **В результате голосования никто не был посажен в тюрьму** 🚫"],
-                        "first_vote_iteration": ["**Несколько игроков набрало равное количество голосов.\n"
+                        "first_vote_iteration": ["**⚠️Несколько игроков набрало равное количество голосов.⚠️\n"
                                                  "Им будет предоставлено дополнительное время для оправдания.\n"
-                                                 "После этого голосование будет проведено заново.**"],
-                        "second_vote_iteration": ["**Несколько игроков набрало равное количество голосов.\n"
+                                                 "⚠️После этого голосование будет проведено заново.⚠️**"],
+                        "second_vote_iteration": ["**⚠️Несколько игроков набрало равное количество голосов.⚠️\n"
                                                   "Голосуйте, если считаете, что нужно посадить всех обвиняемых.\n"
-                                                  "Иначе ничего не делайте.**"]}
+                                                  "⚠️Иначе ничего не делайте.⚠️**"]}
 
     def __init__(self, text_channel: discord.TextChannel, user_to_player, settings: Settings):
         self.text_channel = text_channel
@@ -165,6 +165,7 @@ class Session:
             if target in self.action_targets:
                 await interaction.response.send_message("Этот игрок уже выставлен на голосование.", ephemeral=True)
                 return
+            await self.text_channel.send(f"{interaction.user.mention} выставил игрока {target.mention} на голосование.")
         self.action_targets.append(target)
         player.action_performed = True
         if issubclass(player.role, self.current_role):
@@ -202,7 +203,7 @@ class Session:
         if player.action_performed:
             await interaction.response.send_message("Вы уже голосовали.", ephemeral=True)
             return
-        await interaction.response.send_message(f"Вы проголосовали против игрока {self.turn.mention}.", ephemeral=True)
+        await interaction.response.send_message(f"Вы проголосовали.", ephemeral=True)
         player.action_performed = True
         self.votes[self.turn].append(interaction.user)
 
@@ -242,7 +243,7 @@ class Session:
             await self.doctor_turn()
 
     async def end_game(self):
-        emb = discord.Embed(title=f"Роли игроков:", colour=discord.Color.darker_grey())
+        emb = discord.Embed(title="Роли игроков:", colour=discord.Color.from_rgb(199, 109, 13))
         for user, player in self.user_to_player.items():
             emb.add_field(name=f"{user.name} — {player.role.name}", value="", inline=False)
         await self.text_channel.send(embed=emb)
@@ -271,6 +272,9 @@ class Session:
 
     async def kill_players(self, is_night=True):
         mapping_key = "night" if is_night else "day"
+        if len(self.killed) == 0:
+            await self.text_channel.send(Session.messages_mapping[mapping_key][3])
+            return
         for user in self.killed:
             self.user_to_player[user].status = Player.Status.DEAD
             if self.settings.hide:
@@ -282,9 +286,6 @@ class Session:
                 await user.edit(nick=user.name + Session.messages_mapping[mapping_key][2])
             except discord.Forbidden:
                 pass
-            break
-        else:
-            await self.text_channel.send(Session.messages_mapping[mapping_key][3])
         self.killed.clear()
 
     async def day_speech(self):
@@ -292,6 +293,8 @@ class Session:
         self.action_targets.clear()
         self.current_role = Civilian
         self.status = Session.Status.DAY_SPEECH
+        for player in self.user_to_player.values():
+            player.action_performed = False
         for user, player in self.user_to_player.items():
             if player.status == Player.Status.ALIVE:
                 self.turn = user
@@ -305,7 +308,7 @@ class Session:
     async def tiebreaker(self):
         self.votes.clear()
         self.turn = self.action_targets[0]
-        self.votes[self.turn] = 0
+        self.votes[self.turn] = []
         message = "Следующие игроки могут быть посажены в тюрьму:\n"
         for i, user in enumerate(self.action_targets):
             message += f"{i + 1}. {user.mention}\n"
@@ -313,18 +316,19 @@ class Session:
         for player in self.user_to_player.values():
             player.action_performed = False
         await self.tie_timer(self.get_time())
-        players_alive = 0
+        not_voted = 0
         for player in self.user_to_player.values():
-            if player.status == Player.Status.ALIVE:
-                players_alive += 1
-        if self.votes[self.turn] > players_alive:
+            if player.status == Player.Status.ALIVE and player.action_performed is False:
+                not_voted += 1
+        if len(self.votes[self.turn]) > not_voted:
             for user in self.action_targets:
                 self.killed.append(user)
-        else:
-            await self.text_channel.send("🚫 **Было принято решение никого не сажать в тюрьму** 🚫")
 
     async def count_votes(self, first_iteration=True):
-        top_users = sorted(self.votes.items(), key=lambda x: len(x[1]), reverse=True)
+        user_count = {}
+        for user in self.action_targets:
+            user_count[user] = len(self.votes[user])
+        top_users = sorted(user_count.items(), key=lambda x: x[1], reverse=True)
         maximum = top_users[0][1]
         self.action_targets.clear()
         self.action_targets.append(top_users[0][0])
@@ -333,7 +337,7 @@ class Session:
                 break
             self.action_targets.append(top_users[i][0])
         if len(self.action_targets) == 1:
-            self.killed.append(top_users[0][1])
+            self.killed.append(top_users[0][0])
             self.action_targets.clear()
         else:
             mapping_key = "first_vote_iteration" if first_iteration else "second_vote_iteration"
@@ -350,15 +354,15 @@ class Session:
             self.turn = user
             await self.vote_timer(self.get_time(), user)
             if user == self.action_targets[-1]:
-                for player in self.user_to_player.values():
-                    if not player.action_performed:
+                for not_voted_user, player in self.user_to_player.items():
+                    if not player.action_performed and player.status == Player.Status.ALIVE:
                         player.action_performed = True
-                        self.votes[self.turn].append(user)
+                        self.votes[self.turn].append(not_voted_user)
             message = "Против игрока никто не проголосовал."
             if len(self.votes[self.turn]) != 0:
                 message = f"Против игрока {self.turn.mention} проголосовало {len(self.votes[self.turn])}:\n"
                 for i, voted_player in enumerate(self.votes[self.turn]):
-                    message += f"{i+1}. {voted_player.mention}\n"
+                    message += f"{i + 1}. {voted_player.mention}\n"
             await self.text_channel.send(message)
         self.turn = None
 
@@ -401,9 +405,11 @@ class Session:
             if len(self.action_targets) != 0:
                 await self.justification_speech()
                 await self.voting()
+                await self.count_votes(False)
                 if len(self.action_targets) != 0:
                     await self.tiebreaker()
-            await self.condemned_speech()
+            if len(self.killed) != 0:
+                await self.condemned_speech()
             await self.kill_players(False)
             if await self.win_condition():
                 await self.end_game()

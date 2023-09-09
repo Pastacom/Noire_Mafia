@@ -85,8 +85,8 @@ class Lobby:
 
     async def give_roles(self):
         roles = [Don, Commissioner, Doctor]
-        players_count = len(self.user_to_player) - 2
-        mafia_count = math.ceil(players_count / 4) - 1
+        players_count = len(self.user_to_player) - 3
+        mafia_count = max(0, math.ceil(players_count / 4) - 1)
         players_count -= mafia_count
         for i in range(mafia_count):
             roles.append(Mafia)
