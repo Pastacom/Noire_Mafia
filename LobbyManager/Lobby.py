@@ -52,7 +52,7 @@ class Lobby:
         self.user_to_player.clear()
 
     async def launch_game(self, settings: Settings):
-        self.session = Session(self.text_channel, self.voice_channel, self.user_to_player, settings)
+        self.session = Session(self.text_channel, self.user_to_player, settings)
         await self.session.start()
 
     async def create_session(self):

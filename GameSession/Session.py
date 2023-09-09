@@ -25,12 +25,23 @@ class Session:
 
     turns_sequence = [Mafia, Don, Commissioner, Doctor]
     turns_status = [Status.TEAM_ROLE_TURN, Status.SINGLE_ROLE_TURN, Status.SINGLE_ROLE_TURN, Status.SINGLE_ROLE_TURN]
+    messages_mapping = {"night": ["💀 **Ночью был убит игрок {}** 💀",
+                                  "💀 **Ночью был убит игрок {} — {}** 💀",
+                                  " 💀",
+                                  "🚫 **Ночью никто не был убит** 🚫"],
+                        "day": ["👮**Игрок {} был посажен в тюрьму**👮",
+                                "👮**Игрок {} был посажен в тюрьму — {}**👮",
+                                " 👮",
+                                "🚫 **В результате голосования никто не был посажен в тюрьму** 🚫"],
+                        "first_vote_iteration": ["**Несколько игроков набрало равное количество голосов.\n"
+                                                 "Им будет предоставлено дополнительное время для оправдания.\n"
+                                                 "После этого голосование будет проведено заново.**"],
+                        "second_vote_iteration": ["**Несколько игроков набрало равное количество голосов.\n"
+                                                  "Голосуйте, если считаете, что нужно посадить всех обвиняемых.\n"
+                                                  "Иначе ничего не делайте.**"]}
 
-    def __init__(self, text_channel: discord.TextChannel,
-                 voice_channel: discord.VoiceChannel, user_to_player, settings: Settings):
+    def __init__(self, text_channel: discord.TextChannel, user_to_player, settings: Settings):
         self.text_channel = text_channel
-        # Check if needed later
-        self.voice_channel = voice_channel
         self.user_to_player = user_to_player
         self.settings = settings
         self.action_targets = []
@@ -41,10 +52,8 @@ class Session:
         self.current_role = None
         self.timer_break = False
 
-
     def get_time(self):
         return self.settings.time_limits.get(self.status.value)
-
 
     async def mute(self, user, mute=True):
         if self.settings.mutes:
@@ -53,29 +62,11 @@ class Session:
             except discord.HTTPException:
                 pass
 
-    async def mute_alive(self, user, mute=True):
-        if self.settings.mutes:
-            try:
-                player = self.user_to_player[user]
-                if player.status == Player.Status.ALIVE:
-                    await user.edit(mute=mute)
-            except discord.HTTPException:
-                pass
-
     async def mute_all(self, mute=True):
         if self.settings.mutes:
             for user in self.user_to_player.keys():
                 try:
                     await user.edit(mute=mute)
-                except discord.HTTPException:
-                    pass
-
-    async def mute_all_alive(self, mute=True):
-        if self.settings.mutes:
-            for user, player in self.user_to_player.items():
-                try:
-                    if player.status == Player.Status.ALIVE:
-                        await user.edit(mute=mute)
                 except discord.HTTPException:
                     pass
 
@@ -124,6 +115,15 @@ class Session:
 
     async def night_timer(self, time):
         message = await self.text_channel.send(f"Ходит {self.current_role.name}")
+        await self.timer(time)
+        try:
+            await message.delete()
+        except discord.NotFound:
+            pass
+
+    async def tie_timer(self, time):
+        message = await self.text_channel.send("Голосуйте, если считаете,"
+                                               " что все обвиняемые должны оказаться в тюрьме.")
         await self.timer(time)
         try:
             await message.delete()
@@ -269,21 +269,22 @@ class Session:
             return True
         return False
 
-    async def kill_players(self):
+    async def kill_players(self, is_night=True):
+        mapping_key = "night" if is_night else "day"
         for user in self.killed:
             self.user_to_player[user].status = Player.Status.DEAD
             if self.settings.hide:
-                await self.text_channel.send(f"💀 **Ночью был убит игрок {user.mention}** 💀")
+                await self.text_channel.send(Session.messages_mapping[mapping_key][0].format(user.mention))
             else:
-                await self.text_channel.send(f"💀 **Ночью был убит игрок {user.mention} —"
-                                             f" {self.user_to_player[user].role.name}** 💀")
+                await self.text_channel.send(Session.messages_mapping[mapping_key][1]
+                                             .format(user.mention, self.user_to_player[user].role.name))
             try:
-                await user.edit(nick=user.name + ' 💀')
+                await user.edit(nick=user.name + Session.messages_mapping[mapping_key][2])
             except discord.Forbidden:
                 pass
             break
         else:
-            await self.text_channel.send(f"🚫 **Ночью никто не был убит** 🚫")
+            await self.text_channel.send(Session.messages_mapping[mapping_key][3])
         self.killed.clear()
 
     async def day_speech(self):
@@ -301,6 +302,43 @@ class Session:
                 player.action_available = False
         self.turn = None
 
+    async def tiebreaker(self):
+        self.votes.clear()
+        self.turn = self.action_targets[0]
+        self.votes[self.turn] = 0
+        message = "Следующие игроки могут быть посажены в тюрьму:\n"
+        for i, user in enumerate(self.action_targets):
+            message += f"{i + 1}. {user.mention}\n"
+        await self.text_channel.send(message)
+        for player in self.user_to_player.values():
+            player.action_performed = False
+        await self.tie_timer(self.get_time())
+        players_alive = 0
+        for player in self.user_to_player.values():
+            if player.status == Player.Status.ALIVE:
+                players_alive += 1
+        if self.votes[self.turn] > players_alive:
+            for user in self.action_targets:
+                self.killed.append(user)
+        else:
+            await self.text_channel.send("🚫 **Было принято решение никого не сажать в тюрьму** 🚫")
+
+    async def count_votes(self, first_iteration=True):
+        top_users = sorted(self.votes.items(), key=lambda x: len(x[1]), reverse=True)
+        maximum = top_users[0][1]
+        self.action_targets.clear()
+        self.action_targets.append(top_users[0][0])
+        for i in range(1, len(top_users)):
+            if maximum > top_users[i][1]:
+                break
+            self.action_targets.append(top_users[i][0])
+        if len(self.action_targets) == 1:
+            self.killed.append(top_users[0][1])
+            self.action_targets.clear()
+        else:
+            mapping_key = "first_vote_iteration" if first_iteration else "second_vote_iteration"
+            await self.text_channel.send(Session.messages_mapping[mapping_key][0])
+
     async def voting(self):
         self.votes.clear()
         for user in self.action_targets:
@@ -311,7 +349,12 @@ class Session:
         for user in self.action_targets:
             self.turn = user
             await self.vote_timer(self.get_time(), user)
-            message = f"Против игрока никто не проголосовал."
+            if user == self.action_targets[-1]:
+                for player in self.user_to_player.values():
+                    if not player.action_performed:
+                        player.action_performed = True
+                        self.votes[self.turn].append(user)
+            message = "Против игрока никто не проголосовал."
             if len(self.votes[self.turn]) != 0:
                 message = f"Против игрока {self.turn.mention} проголосовало {len(self.votes[self.turn])}:\n"
                 for i, voted_player in enumerate(self.votes[self.turn]):
@@ -329,14 +372,24 @@ class Session:
             await self.mute(user)
         self.turn = None
 
+    async def condemned_speech(self):
+        await self.text_channel.send("👨‍⚖️ **Приговоренным предоставляются последние слова** 👨‍⚖️")
+        self.status = Session.Status.CONDEMNED_SPEECH
+        for user in self.killed:
+            self.turn = user
+            await self.mute(user, False)
+            await self.day_timer(self.get_time(), user)
+            await self.mute(user)
+        self.turn = None
+
     async def day(self):
         await self.text_channel.send("⏰ **Город просыпается** ⏰")
         await asyncio.sleep(5)
         await self.text_channel.send("🌇 **Наступает день** 🌇")
         await self.kill_players()
-        #if await self.win_condition():
-           # await self.end_game()
-            #return
+        if await self.win_condition():
+            await self.end_game()
+            return
         await asyncio.sleep(5)
         await self.day_speech()
         if len(self.action_targets) == 0:
@@ -344,7 +397,14 @@ class Session:
         else:
             await self.justification_speech()
             await self.voting()
-
+            await self.count_votes()
+            if len(self.action_targets) != 0:
+                await self.justification_speech()
+                await self.voting()
+                if len(self.action_targets) != 0:
+                    await self.tiebreaker()
+            await self.condemned_speech()
+            await self.kill_players(False)
             if await self.win_condition():
                 await self.end_game()
                 return
